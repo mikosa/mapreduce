@@ -1,0 +1,77 @@
+# ============================================================================
+# Application Knowledge MapReduce Configuration
+# ============================================================================
+
+database_path: "knowledge.db"
+output_dir: "output"
+
+# ----------------------------------------------------------------------------
+# 1. Local LLM (Workhorse for Map Phase & Default Reduce/Drill-Down)
+#    Designed for llama.cpp's `llama-server` running Mistral locally.
+# ----------------------------------------------------------------------------
+local_llm:
+  base_url: "http://localhost:8080/v1"
+  api_key: "not-needed"
+  model: "mistral"
+  temperature: 0.1
+  max_tokens: 1024
+  timeout_seconds: 120
+  # llama-server supports grammar-constrained JSON via response_format: json_schema
+  use_json_schema: true
+
+# ----------------------------------------------------------------------------
+# 2. Larger API Model (Used Sparingly for High-Value Synthesis)
+#    Supports any OpenAI-compatible /v1/chat/completions endpoint.
+#    Set api_key via environment variable LARGE_LLM_API_KEY or directly below.
+# ----------------------------------------------------------------------------
+large_llm:
+  enabled: false
+  base_url: "https://api.openai.com/v1"
+  api_key_env: "LARGE_LLM_API_KEY"
+  api_key: ""
+  model: "gpt-4o"
+  temperature: 0.1
+  max_tokens: 2500
+  timeout_seconds: 120
+  # Strict quota protection so you never accidentally burn API credits:
+  max_calls_per_run: 10
+  # Choose which sparse stages are allowed to use the large model when enabled:
+  use_for_entity_resolution: true   # Only 1 API call for the entire dataset
+  use_for_reduce: true              # 1 API call per application dossier
+  use_for_query_synthesis: true     # 1 API call per dynamic topic deep-dive
+
+# ----------------------------------------------------------------------------
+# 3. Ingestion Settings (Nested Confluence .md & Jira/ServiceNow .csv)
+# ----------------------------------------------------------------------------
+ingestion:
+  markdown:
+    # Chunk size kept compact (1500-2500 chars ~ 400-650 tokens) for Mistral 7B accuracy
+    max_chunk_chars: 2200
+    # Pages with fewer words than this (or only headers/TODOs) are flagged as incomplete stubs
+    # and logged as documentation gaps without wasting LLM Map calls.
+    min_words_for_map: 12
+    # Which folder depth in a nested path typically represents the Application name?
+    # Example: "payments/checkout-service/db/migration.md"
+    # If auto_detect_app_from_path is true, the ingester inspects the folder chain and title.
+    auto_detect_app_from_path: true
+    ignored_folder_names:
+      - "docs"
+      - "confluence"
+      - "markdown"
+      - "pages"
+      - "spaces"
+      - "archive"
+      - "attachments"
+      - "templates"
+
+  csv:
+    # Column name candidates (case-insensitive) for flexible CSV ingestion
+    id_columns: ["number", "ticket_id", "id", "issue_key", "key", "incident_id", "sys_id"]
+    app_columns: ["application", "app", "cmdb_ci", "component", "service", "configuration_item", "system"]
+    short_description_columns: ["short_description", "summary", "title", "subject"]
+    description_columns: ["description", "details", "body", "issue_description"]
+    notes_columns: ["notes", "work_notes", "resolution_notes", "close_notes", "technical_notes"]
+    comments_columns: ["comments", "additional_comments", "comment", "activity_log"]
+    # Batch multiple small tickets from the same app/component into one chunk if desired
+    tickets_per_chunk: 1
+    max_ticket_chars: 2500
